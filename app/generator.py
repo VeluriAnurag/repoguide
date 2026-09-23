@@ -9,18 +9,26 @@ import ollama
 
 DEFAULT_LLM = "llama3.2"
 
+# What the model is told to say when the context doesn't answer the question.
+NOT_FOUND_MESSAGE = "I couldn't find that in the retrieved code."
+
 # The citation example below is deliberately a placeholder. With a realistic
 # example like [src/db.py:12-29], Llama 3.2 copied the "src/" folder into its
 # citations (0 of 7 valid in a small test); with this one, 9 of 9 were valid.
 
-SYSTEM_PROMPT = """You are RepoGuide, an assistant that explains a Python codebase.
+SYSTEM_PROMPT = f"""You are RepoGuide, an assistant that explains a Python codebase.
 
 Rules:
 1. Answer using ONLY the code and docs in the context. Do not use outside knowledge about this repository.
 2. After every claim, cite the source label exactly as written in the context, in square brackets, e.g. [folder/file.py:START-END] where you copy the real label from the context.
 3. Only cite labels that appear in the context. Never make up file names or line numbers.
-4. If the context does not contain the answer, say "I couldn't find that in the retrieved code." and stop.
+4. If the context does not contain the answer, say "{NOT_FOUND_MESSAGE}" and stop.
 5. Be concise: a few sentences, not an essay."""
+
+
+def is_not_found(answer: str) -> bool:
+    """True if the model said the retrieved code doesn't answer the question."""
+    return NOT_FOUND_MESSAGE.lower().rstrip(".") in answer.lower()
 
 
 def format_context(results) -> str:

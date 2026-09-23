@@ -1,4 +1,3 @@
-import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,6 +5,7 @@ import ollama
 import pytest
 
 from app.chunker import Chunk
+from app.citations import validate_citations
 from app.generator import build_messages, format_context, generate_answer
 from app.index import SearchResult
 
@@ -108,6 +108,5 @@ def test_real_llm_cites_only_retrieved_chunks():
 
     answer = generate_answer("where is the database connection initialized?", results)
 
-    cited = re.findall(r"\[([^\]\s]+:\d+-\d+)\]", answer)
-    assert cited, answer
-    assert set(cited) <= {r.chunk.citation for r in results}, answer
+    report = validate_citations(answer, [r.chunk for r in results])
+    assert report.ok, answer

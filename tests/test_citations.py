@@ -1,0 +1,103 @@
+from app.chunker import Chunk
+from app.citations import Citation, extract_citations, validate_citations
+
+CHUNKS = [
+    Chunk("bookstore/db.py", 10, 15, "get_connection", "function", "..."),
+    Chunk("bookstore/auth.py", 13, 18, "authenticate_user", "function", "..."),
+    Chunk("README.md", 5, 12, "Setup", "doc", "..."),
+]
+
+
+# --- Finding citations -------------------------------------------------------
+
+
+def test_extracts_citation_with_line_range():
+    assert extract_citations("Opened here [bookstore/db.py:10-15].") == [
+        Citation("bookstore/db.py", 10, 15)
+    ]
+
+
+def test_extracts_single_line_citation():
+    assert extract_citations("See [bookstore/db.py:12]") == [Citation("bookstore/db.py", 12, 12)]
+
+
+def test_extracts_several_citations_in_one_bracket():
+    answer = "Both [bookstore/db.py:10-15, README.md:5-12] and [bookstore/auth.py:13-18; README.md:6]"
+
+    assert extract_citations(answer) == [
+        Citation("bookstore/db.py", 10, 15),
+        Citation("README.md", 5, 12),
+        Citation("bookstore/auth.py", 13, 18),
+        Citation("README.md", 6, 6),
+    ]
+
+
+def test_ignores_brackets_that_are_not_citations():
+    answer = "It returns `list[int]`, see [the docs], and uses users[username]."
+
+    assert extract_citations(answer) == []
+
+
+def test_repeated_citation_is_listed_once():
+    answer = "A [bookstore/db.py:10-15]. B [bookstore/db.py:10-15]."
+
+    assert extract_citations(answer) == [Citation("bookstore/db.py", 10, 15)]
+
+
+# --- Checking citations ------------------------------------------------------
+
+
+def test_exact_match_is_valid():
+    report = validate_citations("x [bookstore/db.py:10-15]", CHUNKS)
+
+    assert report.valid == [Citation("bookstore/db.py", 10, 15)]
+    assert report.invalid == []
+    assert report.ok
+
+
+def test_narrower_range_inside_chunk_is_valid():
+    report = validate_citations("x [bookstore/db.py:12-13] y [bookstore/db.py:15]", CHUNKS)
+
+    assert len(report.valid) == 2 and report.ok
+
+
+def test_wrong_folder_is_invalid():
+    # The real bug from Milestone 3: the model wrote src/ instead of bookstore/.
+    report = validate_citations("x [src/db.py:10-15]", CHUNKS)
+
+    assert report.invalid == [Citation("src/db.py", 10, 15)]
+    assert not report.ok
+
+
+def test_range_past_the_retrieved_chunk_is_invalid():
+    report = validate_citations("x [bookstore/db.py:10-40]", CHUNKS)
+
+    assert report.invalid == [Citation("bookstore/db.py", 10, 40)]
+
+
+def test_range_spanning_two_chunks_is_invalid():
+    # Lines 10-18 are never covered by a single retrieved chunk.
+    chunks = CHUNKS + [Chunk("bookstore/db.py", 16, 18, None, "module", "...")]
+
+    assert not validate_citations("x [bookstore/db.py:10-18]", chunks).ok
+
+
+def test_backwards_range_is_invalid():
+    report = validate_citations("x [bookstore/db.py:15-10]", CHUNKS)
+
+    assert report.invalid == [Citation("bookstore/db.py", 15, 10)]
+
+
+def test_mix_of_valid_and_invalid():
+    report = validate_citations("a [README.md:5-12] b [README.md:40-50]", CHUNKS)
+
+    assert report.valid == [Citation("README.md", 5, 12)]
+    assert report.invalid == [Citation("README.md", 40, 50)]
+    assert not report.ok
+
+
+def test_answer_without_citations_is_not_ok():
+    report = validate_citations("I couldn't find that in the retrieved code.", CHUNKS)
+
+    assert report.valid == [] and report.invalid == []
+    assert not report.ok
