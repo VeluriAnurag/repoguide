@@ -1,0 +1,1 @@
+"""Bookstore example package."""

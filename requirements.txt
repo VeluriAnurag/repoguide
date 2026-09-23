@@ -1,0 +1,12 @@
+# Testing (Milestone 1)
+pytest
+
+# Embeddings + vector search (Milestone 2)
+sentence-transformers  # loads the Hugging Face BGE model (pulls in torch + transformers)
+faiss-cpu
+
+# Local LLM (Milestone 3) - talks to a local Ollama server running Llama 3.2
+ollama
+
+# UI (Milestone 5)
+streamlit
