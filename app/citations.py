@@ -9,6 +9,7 @@ import re
 from dataclasses import dataclass
 
 from app.chunker import Chunk
+from app.generator import is_not_found
 
 # Finds text inside square brackets, e.g. "[a.py:1-2, b.py:5]".
 BRACKETS = re.compile(r"\[([^\[\]]+)\]")
@@ -71,3 +72,21 @@ def validate_citations(answer: str, retrieved_chunks: list[Chunk]) -> CitationRe
         else:
             invalid.append(citation)
     return CitationReport(valid=valid, invalid=invalid)
+
+
+def citation_summary(answer: str, retrieved_chunks: list[Chunk]) -> tuple[str, str]:
+    """Tell the user whether to trust the citations.
+
+    Returns (level, message) where level is "ok", "warning", or "info", so
+    the terminal and the web UI can each display it their own way.
+    """
+    report = validate_citations(answer, retrieved_chunks)
+    if report.invalid:
+        bad = ", ".join(str(c) for c in report.invalid)
+        return "warning", f"These citations don't match any retrieved code: {bad}"
+    if report.valid:
+        n = len(report.valid)
+        return "ok", f"Citations checked: {n} of {n} match the retrieved code."
+    if is_not_found(answer):
+        return "info", "No citations (the answer wasn't in the retrieved code)."
+    return "warning", "This answer has no citations, so it can't be checked."

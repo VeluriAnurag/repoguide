@@ -4,9 +4,17 @@ RepoGuide answers questions about a Python codebase and shows exactly which file
 
 **Stack:** Python, Llama 3.2 (via Ollama), Hugging Face BGE embeddings, FAISS, Streamlit
 
-> Work in progress. Search, LLM answers, and citation checks work today; the UI is next (see [Status](#status)).
+> Work in progress. The full pipeline and web UI work; I'm now measuring search quality (see [Status](#status)).
 
-## Example
+## Web UI
+
+```bash
+python -m streamlit run app/ui.py
+```
+
+Then open http://localhost:8501, click **Index repository** (it starts on the sample project), and ask a question. The page shows the answer, whether its citations check out, and the code for each source, with cited sources opened and marked.
+
+## Command Line Example
 
 ```bash
 python -m app.ask tests/fixtures/sample_repo "where is the database connection initialized?"
@@ -40,7 +48,7 @@ Python repo
   -> FAISS index       finds the chunks closest to a question
   -> Llama 3.2         writes an answer using only those chunks, with citations
   -> check citations   flag any citation that isn't in the retrieved chunks
-  -> Streamlit UI                                                       (planned)
+  -> Streamlit UI      answer, citation check, and the code behind each source
 ```
 
 Every chunk keeps its file path and line numbers the whole way through, which is what makes citations like `bookstore/db.py:10-15` possible.
@@ -57,7 +65,9 @@ Every chunk keeps its file path and line numbers the whole way through, which is
 
 **Checking citations with simple rules instead of trusting the model.** After Llama answers, RepoGuide finds every `[file:start-end]` in the answer and checks that one of the retrieved chunks is from that file and covers those lines. If not, it prints a warning with the bad citation. I tested it on real output: with the old prompt it flagged every made-up `src/` citation, and on 10 harder questions about RepoGuide's own code, all 12 citations passed. One limit: it checks that a citation points to code the model was shown, not that the sentence describing that code is correct.
 
-**Keeping everything local.** Embeddings run on the CPU and Llama 3.2 runs through Ollama, so no code leaves the machine.
+**Keeping the UI separate from the logic.** `app/ui.py` only draws the page. It calls the same functions as the command line tools, so the web page can't change how search or citation checks work, and those parts stay testable without a browser.
+
+**Keeping everything local.** Embeddings run on the CPU and Llama 3.2 runs through Ollama, so no code leaves the machine. The Streamlit server only accepts connections from the same computer, and usage stats are turned off (`.streamlit/config.toml`).
 
 ## Status
 
@@ -67,8 +77,8 @@ Every chunk keeps its file path and line numbers the whole way through, which is
 | BGE embeddings + FAISS search | Done |
 | Llama 3.2 answers with citations | Done |
 | Citation checking | Done |
-| Streamlit UI | Next |
-| Measuring search quality | Planned |
+| Streamlit UI | Done |
+| Measuring search quality | Next |
 
 ## Setup
 

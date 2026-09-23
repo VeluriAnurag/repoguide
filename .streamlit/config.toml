@@ -1,0 +1,9 @@
+[browser]
+# Keep everything local: don't send usage statistics to Streamlit.
+gatherUsageStats = false
+
+[server]
+# Only accept connections from this computer, not others on the network.
+address = "localhost"
+# Skip Streamlit's first-run email prompt in the terminal.
+headless = true

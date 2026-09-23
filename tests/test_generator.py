@@ -6,7 +6,7 @@ import pytest
 
 from app.chunker import Chunk
 from app.citations import validate_citations
-from app.generator import build_messages, format_context, generate_answer
+from app.generator import build_messages, format_context, generate_answer, is_not_found
 from app.index import SearchResult
 
 SAMPLE_REPO = Path(__file__).parent / "fixtures" / "sample_repo"
@@ -110,3 +110,8 @@ def test_real_llm_cites_only_retrieved_chunks():
 
     report = validate_citations(answer, [r.chunk for r in results])
     assert report.ok, answer
+
+
+def test_is_not_found_ignores_case_and_final_period():
+    assert is_not_found("i couldn't find that in the retrieved code")
+    assert not is_not_found("The connection is opened in get_connection.")
