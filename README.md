@@ -4,21 +4,29 @@ RepoGuide answers questions about a Python codebase and shows exactly which file
 
 **Stack:** Python, Llama 3.2 (via Ollama), Hugging Face BGE embeddings, FAISS, Streamlit
 
-> Work in progress. Search works today; LLM answers, citation checks, and the UI are in progress (see [Status](#status)).
+> Work in progress. Search and LLM answers work today; citation checks and the UI are next (see [Status](#status)).
 
 ## Example
 
 ```bash
-python -m app.retriever tests/fixtures/sample_repo "where is the database connection initialized?"
+python -m app.ask tests/fixtures/sample_repo "where is the database connection initialized?"
 ```
 
 ```text
-1. bookstore/db.py:10-15                    score=0.712  get_connection
-2. README.md:14-17                          score=0.686  Architecture
-3. bookstore/db.py:1-7                      score=0.668
+The database connection is initialized in the `get_connection` function, which is
+decorated with `@functools.lru_cache(maxsize=1)`. [bookstore/db.py:10-15]
+
+This function opens a SQLite connection using `sqlite3.connect(DB_PATH)` and returns
+the connection object. [bookstore/db.py:10-15]
 ```
 
-The top result is the function that opens the database connection, even though the question and the code use different words ("initialized" vs. `sqlite3.connect`).
+Every bracket is a citation you can check: `bookstore/db.py:10-15` is exactly where `get_connection` lives. If the answer isn't in the code, RepoGuide says so instead of guessing (for example, asking how the sample app sends emails gives "I couldn't find that in the retrieved code").
+
+To see just the search results without the LLM:
+
+```bash
+python -m app.retriever tests/fixtures/sample_repo "where is the database connection initialized?"
+```
 
 ## How It Works
 
@@ -28,7 +36,7 @@ Python repo
   -> split into chunks one chunk per function/class, with file + line numbers
   -> embed chunks      BGE turns each chunk into 384 numbers that capture its meaning
   -> FAISS index       finds the chunks closest to a question
-  -> Llama 3.2         writes an answer using only those chunks        (in progress)
+  -> Llama 3.2         writes an answer using only those chunks, with citations
   -> check citations   make sure every cited line range really exists  (planned)
   -> Streamlit UI                                                       (planned)
 ```
@@ -43,6 +51,8 @@ Every chunk keeps its file path and line numbers the whole way through, which is
 
 **Running BGE with ONNX Runtime instead of PyTorch.** PyTorch and FAISS crashed when used in the same program on my Mac. I traced it to both libraries bringing their own copy of the same helper library (OpenMP), which conflict. I switched to ONNX Runtime, a lighter way to run the same Hugging Face model. I checked that it gives the same numbers as PyTorch before switching, and it cut the install size by about 500 MB.
 
+**Writing the prompt so the model cites real files.** Llama only sees the retrieved chunks, each labeled like `[bookstore/db.py:10-15]`, and is told to cite those labels. My first prompt used a realistic example citation (`[src/db.py:12-29]`), and the model copied the `src/` folder into its answers, so none of its citations pointed to real files (0 of 7). Switching to an obvious placeholder (`[folder/file.py:START-END]`) got 9 of 9 citations right on the same questions. It's a small test, which is why I'm adding an automatic citation check next.
+
 **Keeping everything local.** Embeddings run on the CPU and Llama 3.2 runs through Ollama, so no code leaves the machine.
 
 ## Status
@@ -51,19 +61,20 @@ Every chunk keeps its file path and line numbers the whole way through, which is
 |---|---|
 | File discovery + function-aware chunking | Done |
 | BGE embeddings + FAISS search | Done |
-| Llama 3.2 answers with citations | In progress |
-| Citation checking | Planned |
+| Llama 3.2 answers with citations | Done |
+| Citation checking | Next |
 | Streamlit UI | Planned |
 | Measuring search quality | Planned |
 
 ## Setup
 
-Requires Python 3.11+.
+Requires Python 3.11+ and [Ollama](https://ollama.com) for the LLM step.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+ollama pull llama3.2    # ~2 GB, with the Ollama app running
 ```
 
 See how a repo gets split into chunks:
@@ -75,7 +86,8 @@ python -m app.chunker tests/fixtures/sample_repo
 ## Tests
 
 ```bash
-pytest                  # everything (first run downloads the BGE model, ~130 MB)
+pytest                  # everything (first run downloads the BGE model, ~130 MB;
+                        # the LLM test is skipped if Ollama isn't running)
 pytest -m "not slow"    # quick tests only, no model download
 ```
 
