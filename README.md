@@ -13,8 +13,8 @@ This project is intended to become the implementation behind the resume project:
 | Milestone | Scope | Status |
 |---|---|---|
 | 1 | File discovery + AST-aware chunking | Done |
-| 2 | Hugging Face BGE embeddings + FAISS retrieval (CLI demo) | Next |
-| 3 | Llama 3.2 answers via Ollama, with citations | Planned |
+| 2 | Hugging Face BGE embeddings + FAISS retrieval (CLI demo) | Done |
+| 3 | Llama 3.2 answers via Ollama, with citations | Next |
 | 4 | Citation validation | Planned |
 | 5 | Streamlit UI | Planned |
 | 6 | Retrieval evaluation + polish | Planned |
@@ -25,7 +25,8 @@ This project is intended to become the implementation behind the resume project:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-pytest
+pytest                  # all tests (first run downloads the BGE model, ~130 MB)
+pytest -m "not slow"    # fast unit tests only, no model needed
 ```
 
 Inspect how a repository gets chunked:
@@ -34,10 +35,23 @@ Inspect how a repository gets chunked:
 python -m app.chunker tests/fixtures/sample_repo
 ```
 
+Search a repository with a question:
+
+```bash
+python -m app.retriever tests/fixtures/sample_repo "where is the database connection initialized?"
+```
+
+```text
+1. bookstore/db.py:10-15                    score=0.712  get_connection
+2. README.md:14-17                          score=0.686  Architecture
+3. bookstore/db.py:1-7                      score=0.668
+```
+
 ## Tech Choices
 
-- **Embeddings:** `BAAI/bge-small-en-v1.5` from Hugging Face, loaded with `sentence-transformers`. Runs locally on CPU.
-- **Vector search:** FAISS.
+- **Embeddings:** `BAAI/bge-small-en-v1.5` from Hugging Face, run locally with ONNX Runtime and Hugging Face `tokenizers`. Each chunk is embedded with a short `File:`/`Symbol:` header so paths and names contribute to relevance.
+- **Why not PyTorch?** On macOS, PyTorch and `faiss-cpu` each bundle their own OpenMP runtime, and loading both into one process crashes (segfault / `OMP: Error #15`). ONNX Runtime has no OpenMP dependency, produces the same embeddings (max difference ~2e-7), and is ~80 MB instead of ~590 MB.
+- **Vector search:** FAISS `IndexFlatIP` (exact search). Vectors are normalized, so inner product equals cosine similarity.
 - **LLM:** Llama 3.2 (3B) served locally by [Ollama](https://ollama.com). Ollama handles model download, quantization, and Apple Silicon acceleration, so RepoGuide only needs its small Python client.
 
 ## Core Requirements

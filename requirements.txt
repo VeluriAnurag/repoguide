@@ -2,7 +2,12 @@
 pytest
 
 # Embeddings + vector search (Milestone 2)
-sentence-transformers  # loads the Hugging Face BGE model (pulls in torch + transformers)
+# The Hugging Face BGE model runs on ONNX Runtime instead of PyTorch: PyTorch
+# and FAISS bundle conflicting OpenMP runtimes on macOS and crash together.
+huggingface_hub  # downloads the BGE model files from Hugging Face
+tokenizers       # Hugging Face's tokenizer (text -> token IDs)
+onnxruntime      # runs the BGE model
+numpy
 faiss-cpu
 
 # Local LLM (Milestone 3) - talks to a local Ollama server running Llama 3.2
