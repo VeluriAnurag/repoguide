@@ -1,41 +1,12 @@
-# RepoGuide – Codebase RAG Assistant
+# RepoGuide
 
-## Project Goal
-Build a local-first RAG assistant that can ingest a Python repository and answer questions about its code and documentation while citing the exact source files and line ranges used for each answer.
+RepoGuide answers questions about a Python codebase and shows exactly which files and lines the answer came from. Everything runs locally on my laptop, with no paid APIs.
 
-This project is intended to become the implementation behind the resume project:
+**Stack:** Python, Llama 3.2 (via Ollama), Hugging Face BGE embeddings, FAISS, Streamlit
 
-> RepoGuide – Codebase RAG Assistant  
-> Python, Llama 3.2, Hugging Face, FAISS, Streamlit
+> Work in progress. Search works today; LLM answers, citation checks, and the UI are in progress (see [Status](#status)).
 
-## Status
-
-| Milestone | Scope | Status |
-|---|---|---|
-| 1 | File discovery + AST-aware chunking | Done |
-| 2 | Hugging Face BGE embeddings + FAISS retrieval (CLI demo) | Done |
-| 3 | Llama 3.2 answers via Ollama, with citations | Next |
-| 4 | Citation validation | Planned |
-| 5 | Streamlit UI | Planned |
-| 6 | Retrieval evaluation + polish | Planned |
-
-## Setup
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pytest                  # all tests (first run downloads the BGE model, ~130 MB)
-pytest -m "not slow"    # fast unit tests only, no model needed
-```
-
-Inspect how a repository gets chunked:
-
-```bash
-python -m app.chunker tests/fixtures/sample_repo
-```
-
-Search a repository with a question:
+## Example
 
 ```bash
 python -m app.retriever tests/fixtures/sample_repo "where is the database connection initialized?"
@@ -47,101 +18,70 @@ python -m app.retriever tests/fixtures/sample_repo "where is the database connec
 3. bookstore/db.py:1-7                      score=0.668
 ```
 
-## Tech Choices
+The top result is the function that opens the database connection, even though the question and the code use different words ("initialized" vs. `sqlite3.connect`).
 
-- **Embeddings:** `BAAI/bge-small-en-v1.5` from Hugging Face, run locally with ONNX Runtime and Hugging Face `tokenizers`. Each chunk is embedded with a short `File:`/`Symbol:` header so paths and names contribute to relevance.
-- **Why not PyTorch?** On macOS, PyTorch and `faiss-cpu` each bundle their own OpenMP runtime, and loading both into one process crashes (segfault / `OMP: Error #15`). ONNX Runtime has no OpenMP dependency, produces the same embeddings (max difference ~2e-7), and is ~80 MB instead of ~590 MB.
-- **Vector search:** FAISS `IndexFlatIP` (exact search). Vectors are normalized, so inner product equals cosine similarity.
-- **LLM:** Llama 3.2 (3B) served locally by [Ollama](https://ollama.com). Ollama handles model download, quantization, and Apple Silicon acceleration, so RepoGuide only needs its small Python client.
+## How It Works
 
-## Core Requirements
-1. Accept a local Python repository as input.
-2. Discover relevant source files and documentation.
-3. Parse Python files into meaningful chunks, preferably around functions/classes rather than arbitrary character boundaries.
-4. Generate embeddings with a Hugging Face BGE embedding model.
-5. Store/retrieve vectors with FAISS.
-6. Run a local Llama 3.2 model for answer generation.
-7. Include file-and-line citations in generated answers.
-8. Verify that citations actually refer to retrieved source material.
-9. Provide a simple Streamlit interface.
-10. Keep the first version simple enough to run locally.
-
-## Suggested User Flow
-1. User selects a Python repository.
-2. RepoGuide indexes the repository.
-3. User asks a question such as:
-   - "Where is authentication handled?"
-   - "Explain how the database connection works."
-   - "What calls this function?"
-4. The retriever finds relevant chunks.
-5. The LLM answers using only retrieved context.
-6. The UI displays citations such as:
-   `src/auth.py:42-68`
-
-## Initial Architecture
-
-Repository
-    |
-    v
-File Discovery
-    |
-    v
-Python Parser / Function-Aware Chunker
-    |
-    v
-Text Chunks + Metadata
-    |
-    v
-BGE Embeddings
-    |
-    v
-FAISS Index
-    |
-    v
-Retriever
-    |
-    +----> Retrieved source chunks
-    |
-    v
-Llama 3.2
-    |
-    v
-Citation Validator
-    |
-    v
-Streamlit UI
-
-## Metadata
-Each indexed chunk should retain at least:
-- repository-relative file path
-- starting line
-- ending line
-- chunk type
-- function/class name when available
-- original source text
-
-Example:
-```json
-{
-  "file": "src/auth.py",
-  "start_line": 42,
-  "end_line": 68,
-  "symbol": "authenticate_user",
-  "chunk_type": "function"
-}
+```text
+Python repo
+  -> find files        skip folders like .git, .venv, node_modules
+  -> split into chunks one chunk per function/class, with file + line numbers
+  -> embed chunks      BGE turns each chunk into 384 numbers that capture its meaning
+  -> FAISS index       finds the chunks closest to a question
+  -> Llama 3.2         writes an answer using only those chunks        (in progress)
+  -> check citations   make sure every cited line range really exists  (planned)
+  -> Streamlit UI                                                       (planned)
 ```
 
-## Success Criteria
-A good first demo should let someone point RepoGuide at a small Python repository and ask:
+Every chunk keeps its file path and line numbers the whole way through, which is what makes citations like `bookstore/db.py:10-15` possible.
 
-"Where is the database connection initialized?"
+## Design Decisions
 
-The system should return a concise explanation plus citations that point to the actual relevant lines.
+**Splitting code by function, not by character count.** I use Python's built-in `ast` module to find where each function and class starts and ends, so a search result is a complete function instead of half of one. Code outside functions (imports, constants) is kept too, and large classes are split into their methods.
 
-## Engineering Principles
-- Prefer local inference where practical.
-- Never let the LLM invent source citations.
-- Keep source metadata attached to every chunk throughout retrieval.
-- Make indexing deterministic and repeatable.
-- Separate ingestion, retrieval, generation, and UI code.
-- Add tests before adding advanced features.
+**Adding the file name to what gets embedded.** Before embedding a chunk, I add a short header like `File: bookstore/db.py`. File and function names say a lot about what code does, so this helps search.
+
+**Running BGE with ONNX Runtime instead of PyTorch.** PyTorch and FAISS crashed when used in the same program on my Mac. I traced it to both libraries bringing their own copy of the same helper library (OpenMP), which conflict. I switched to ONNX Runtime, a lighter way to run the same Hugging Face model. I checked that it gives the same numbers as PyTorch before switching, and it cut the install size by about 500 MB.
+
+**Keeping everything local.** Embeddings run on the CPU and Llama 3.2 runs through Ollama, so no code leaves the machine.
+
+## Status
+
+| Step | Status |
+|---|---|
+| File discovery + function-aware chunking | Done |
+| BGE embeddings + FAISS search | Done |
+| Llama 3.2 answers with citations | In progress |
+| Citation checking | Planned |
+| Streamlit UI | Planned |
+| Measuring search quality | Planned |
+
+## Setup
+
+Requires Python 3.11+.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+See how a repo gets split into chunks:
+
+```bash
+python -m app.chunker tests/fixtures/sample_repo
+```
+
+## Tests
+
+```bash
+pytest                  # everything (first run downloads the BGE model, ~130 MB)
+pytest -m "not slow"    # quick tests only, no model download
+```
+
+The tests use a small sample project in `tests/fixtures/sample_repo`. The most important one checks that every line of code ends up in exactly one chunk with the correct line numbers, since wrong line numbers would mean wrong citations.
+
+## Known Issues
+
+- Test files sometimes rank above the code they test, because test names read like plain English.
+- Very short chunks (like a one-line `__init__.py`) occasionally show up in results.
