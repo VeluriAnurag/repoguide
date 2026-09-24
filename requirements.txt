@@ -1,17 +1,20 @@
-# Testing (Milestone 1)
-pytest
+# Versions are pinned to the ones the tests pass with, so the website build
+# doesn't change unexpectedly when a library releases a new version.
 
-# Embeddings + vector search (Milestone 2)
+# Testing
+pytest==9.1.1
+
+# Embeddings + vector search
 # The Hugging Face BGE model runs on ONNX Runtime instead of PyTorch: PyTorch
 # and FAISS bundle conflicting OpenMP runtimes on macOS and crash together.
-huggingface_hub  # downloads the BGE model files from Hugging Face
-tokenizers       # Hugging Face's tokenizer (text -> token IDs)
-onnxruntime      # runs the BGE model
-numpy
-faiss-cpu
+huggingface_hub==1.32.0  # downloads the BGE model files from Hugging Face
+tokenizers==0.23.2       # Hugging Face's tokenizer (text -> token IDs)
+onnxruntime==1.30.0      # runs the BGE model
+numpy==2.5.3
+faiss-cpu==1.15.1
 
-# Local LLM (Milestone 3) - talks to a local Ollama server running Llama 3.2
-ollama
+# Local LLM - talks to an Ollama server running Llama 3.2
+ollama==0.6.2
 
-# UI (Milestone 5)
-streamlit
+# Web UI
+streamlit==1.64.0

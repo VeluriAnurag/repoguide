@@ -111,6 +111,22 @@ See how a repo gets split into chunks:
 python -m app.chunker tests/fixtures/sample_repo
 ```
 
+## Public Website (Hugging Face Spaces)
+
+The `Dockerfile` runs Ollama (Llama 3.2) and the Streamlit app together in one container, which Hugging Face Spaces builds and hosts for free:
+
+```bash
+hf auth login                                        # once, with a Hugging Face access token
+python scripts/deploy_space.py <hf-username>/repoguide
+```
+
+The public version runs with `REPOGUIDE_PUBLIC=1`, which changes a few things for safety:
+- Only GitHub links are accepted. Typing a folder path would let visitors read the server's own files.
+- Indexes are shared between visitors (the same repo is only indexed once), and only one repo is indexed at a time.
+- At most 10 downloaded repos are kept; the least recently used are deleted.
+
+On the free CPU, answers take roughly 20-60 seconds, and the Space sleeps after 2 days without visitors.
+
 ## Tests
 
 ```bash

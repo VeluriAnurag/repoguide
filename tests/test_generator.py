@@ -99,7 +99,7 @@ def test_generate_answer_calls_model_and_converts_source_numbers():
     assert answer == "The connection is opened in get_connection [bookstore/db.py:10-15]."
     [call] = client.calls
     assert call["model"] == "llama3.2"
-    assert call["options"] == {"temperature": 0}
+    assert call["options"] == {"temperature": 0, "num_predict": 512}
 
 
 def test_missing_model_gives_helpful_error():

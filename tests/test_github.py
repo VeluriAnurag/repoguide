@@ -97,3 +97,32 @@ def test_real_download_of_a_tiny_public_repo(tmp_path):
 def test_resolve_repository_explains_non_github_links():
     with pytest.raises(ValueError, match="Only public GitHub repos"):
         resolve_repository("https://gitlab.com/psf/requests")
+
+
+def test_public_mode_refuses_local_paths(tmp_path):
+    # On the public website, a folder path would let visitors read server files.
+    with pytest.raises(ValueError, match="public GitHub repository link"):
+        resolve_repository(str(tmp_path), allow_local=False)
+
+
+def test_canonical_name_is_the_same_for_every_url_form():
+    forms = [
+        "https://github.com/psf/requests",
+        "https://github.com/psf/requests.git",
+        "https://github.com/psf/requests?tab=readme-ov-file",
+        "git@github.com:psf/requests.git",
+    ]
+    assert {github.canonical_name(f) for f in forms} == {"psf/requests"}
+    assert github.canonical_name("/Users/me/project") == "/Users/me/project"
+
+
+def test_remove_old_repos_keeps_most_recently_used(tmp_path):
+    import os
+
+    for i, name in enumerate(["old", "middle", "new"]):
+        (tmp_path / name).mkdir()
+        os.utime(tmp_path / name, (1000 + i, 1000 + i))
+
+    github.remove_old_repos(tmp_path, keep=2)
+
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["middle", "new"]

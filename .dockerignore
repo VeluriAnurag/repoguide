@@ -1,0 +1,7 @@
+.venv/
+.git/
+.claude/
+data/repos/
+**/__pycache__/
+.pytest_cache/
+.DS_Store

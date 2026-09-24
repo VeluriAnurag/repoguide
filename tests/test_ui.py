@@ -88,3 +88,16 @@ def test_author_credit_and_about_dialog():
 
     assert not at.exception
     assert any("How it works" in m.value for m in at.markdown)
+
+
+def test_public_mode_blocks_folder_paths(monkeypatch):
+    monkeypatch.setenv("REPOGUIDE_PUBLIC", "1")
+    at = load_app()
+
+    assert at.sidebar.text_input[0].label == "Paste a public GitHub repo link"
+    at.sidebar.text_input[0].set_value("/etc")
+    at.sidebar.button[0].click().run()
+
+    assert not at.exception
+    assert "public GitHub repository link" in at.sidebar.error[0].value
+    assert "index" not in at.session_state

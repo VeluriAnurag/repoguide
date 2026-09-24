@@ -10,11 +10,17 @@ model to copy labels like [docs/user/advanced.rst:1051-1100] gave 10 valid and
 5 broken citations; numbered sources gave 20 valid and 0 broken.
 """
 
+import os
 import re
 
 import ollama
 
-DEFAULT_LLM = "llama3.2"
+# The Ollama model to use; can be changed with the REPOGUIDE_LLM variable
+# (e.g. a smaller "llama3.2:1b" on a slow server).
+DEFAULT_LLM = os.environ.get("REPOGUIDE_LLM", "llama3.2")
+
+# Upper limit on answer length, so answers stay short and fast on slow CPUs.
+MAX_ANSWER_TOKENS = 512
 
 # What the model is told to say when the context doesn't answer the question.
 NOT_FOUND_MESSAGE = "I couldn't find that in the retrieved code."
@@ -91,7 +97,7 @@ def generate_answer(question: str, results, model: str = DEFAULT_LLM, client=Non
             messages=build_messages(question, results),
             # temperature 0 = always pick the most likely next word, so the
             # same question gives (nearly) the same answer every time.
-            options={"temperature": 0},
+            options={"temperature": 0, "num_predict": MAX_ANSWER_TOKENS},
         )
     except ConnectionError as e:
         raise RuntimeError("Can't reach Ollama. Open the Ollama app and try again.") from e

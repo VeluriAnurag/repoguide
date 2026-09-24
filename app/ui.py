@@ -6,6 +6,8 @@ This file only handles the page. All the real work (indexing, search,
 answering, citation checks) is done by the same functions the CLI uses.
 """
 
+import os
+import threading
 import time
 from pathlib import Path
 
@@ -14,11 +16,16 @@ import streamlit as st
 from app.citations import BRACKETS, CITATION, citation_summary, is_supported, validate_citations
 from app.embeddings import EmbeddingModel
 from app.generator import CODE_SPANS, generate_answer
-from app.github import resolve_repository
+from app.github import canonical_name, resolve_repository
+from app.index import RepositoryIndex
 from app.retriever import build_index, retrieve
 
 SAMPLE_REPO = Path(__file__).parent.parent / "tests" / "fixtures" / "sample_repo"
 TOP_K = 5
+
+# On the public website (REPOGUIDE_PUBLIC=1) only GitHub links are allowed,
+# so visitors can't make the server read its own files by typing a path.
+PUBLIC_MODE = os.environ.get("REPOGUIDE_PUBLIC") == "1"
 
 AUTHOR_NAME = "Anurag Veluri"
 LINKEDIN_URL = ""  # TODO: paste your LinkedIn profile URL here
@@ -45,27 +52,45 @@ def get_embedding_model() -> EmbeddingModel:
 # --- Indexing ------------------------------------------------------------------
 
 
+@st.cache_resource
+def get_index_lock() -> threading.Lock:
+    # One lock shared by every visitor, so only one repo is indexed at a time
+    # on a small server. (A plain module-level Lock would be re-created on
+    # every rerun and never block anything.)
+    return threading.Lock()
+
+
+@st.cache_resource(max_entries=5, show_spinner=False)
+def load_index(name: str) -> tuple[RepositoryIndex, float]:
+    """Build an index once and share it: if two visitors ask about the same
+    repo, it's only downloaded and embedded the first time."""
+    allow_local = not PUBLIC_MODE or name == str(SAMPLE_REPO)
+    with get_index_lock():
+        start = time.perf_counter()
+        index = build_index(str(resolve_repository(name, allow_local)), get_embedding_model())
+        return index, time.perf_counter() - start
+
+
 def index_repository(source: str) -> None:
-    """Download (if it's a GitHub URL) and index a repo, keeping the result
-    in session_state so it survives reruns. Starts a fresh chat."""
-    start = time.perf_counter()
-    index = build_index(str(resolve_repository(source)), get_embedding_model())
+    """Load the index for a repo into this visitor's session and start a fresh chat."""
+    name = canonical_name(source)
+    index, seconds = load_index(name)
     st.session_state.index = index
-    st.session_state.indexed_path = source
+    st.session_state.indexed_path = name
     st.session_state.index_stats = (
         len({c.file_path for c in index.chunks}),
         len(index.chunks),
-        time.perf_counter() - start,
+        seconds,
     )
     st.session_state.messages = []
 
 
-def repo_display_name(source: str) -> str:
-    if source == str(SAMPLE_REPO):
+def repo_display_name(name: str) -> str:
+    if name == str(SAMPLE_REPO):
         return "Sample bookstore app"
-    if "github.com" in source:
-        return source.split("github.com")[-1].strip("/:").split("?")[0].split("#")[0]
-    return Path(source).name
+    if "github.com" in name:
+        name = canonical_name(name)
+    return name if name.count("/") == 1 and not name.startswith("/") else Path(name).name
 
 
 def show_sidebar() -> None:
@@ -74,7 +99,7 @@ def show_sidebar() -> None:
     # A form means pressing Enter in the box submits it, same as the button.
     with st.sidebar.form("repo_form"):
         source = st.text_input(
-            "Paste a GitHub repo link (or a local folder path)",
+            "Paste a public GitHub repo link" if PUBLIC_MODE else "Paste a GitHub repo link (or a local folder path)",
             placeholder="https://github.com/psf/requests",
         )
         submitted = st.form_submit_button("Index repository", type="primary", use_container_width=True)
@@ -186,7 +211,7 @@ ABOUT_TEXT = """
 files and lines each answer came from.** Paste a public GitHub link, ask
 something like *"Where is the database connection set up?"*, and get a short
 answer with citations like `app/db.py:10-15` that you can open and check.
-Everything runs locally on a laptop, with no paid APIs.
+It only uses open models (no paid AI APIs), so it can run entirely on a laptop.
 
 #### How it works
 1. **Download and split the code.** RepoGuide clones the repo and uses
