@@ -44,13 +44,18 @@ def index_repository(source: str) -> None:
 
 def show_sidebar() -> None:
     st.sidebar.header("Repository")
-    source = st.sidebar.text_input(
-        "Local folder or public GitHub URL",
-        value=str(SAMPLE_REPO),
-        help="e.g. https://github.com/psf/requests",
-    )
+    # A form means pressing Enter in the box submits it, same as the button.
+    with st.sidebar.form("repo_form"):
+        source = st.text_input(
+            "Paste a GitHub repo link (or a local folder path)",
+            placeholder="https://github.com/psf/requests",
+        )
+        submitted = st.form_submit_button("Index repository", type="primary")
+    st.sidebar.caption(f"No repo in mind? Try the sample project: `{SAMPLE_REPO}`")
 
-    if st.sidebar.button("Index repository", type="primary"):
+    if submitted and not source.strip():
+        st.sidebar.error("Paste a GitHub link or a folder path first.")
+    elif submitted:
         with st.sidebar.status("Downloading and indexing (big repos take a minute or two)...") as status:
             try:
                 index_repository(source)

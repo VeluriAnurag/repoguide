@@ -21,6 +21,25 @@ def test_page_loads_and_asks_for_a_repository_first():
     assert len(at.text_input) == 1  # only the repo path; no question box yet
 
 
+def test_empty_box_asks_for_a_link():
+    at = load_app()
+
+    at.sidebar.button[0].click().run()
+
+    assert not at.exception
+    assert at.sidebar.error[0].value == "Paste a GitHub link or a folder path first."
+
+
+def test_invalid_link_shows_error_instead_of_crashing():
+    at = load_app()
+
+    at.sidebar.text_input[0].set_value("https://gitlab.com/psf/requests")
+    at.sidebar.button[0].click().run()
+
+    assert not at.exception
+    assert "Not a GitHub repository URL" in at.sidebar.error[0].value
+
+
 def test_missing_folder_shows_error_instead_of_crashing():
     at = load_app()
 

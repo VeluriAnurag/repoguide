@@ -33,6 +33,15 @@ def test_extracts_several_citations_in_one_bracket():
     ]
 
 
+def test_path_with_spaces_is_read_whole():
+    chunk = Chunk("docs/User Guide.md", 1, 5, None, "doc", "...")
+
+    report = validate_citations("See [docs/User Guide.md:1-5, README.md:5-12].", [chunk, *CHUNKS])
+
+    assert [str(c) for c in report.valid] == ["docs/User Guide.md:1-5", "README.md:5-12"]
+    assert report.ok
+
+
 def test_ignores_brackets_that_are_not_citations():
     answer = "It returns `list[int]`, see [the docs], and uses users[username]."
 

@@ -30,7 +30,7 @@ def build_index(repo_path: str, embedding_model) -> RepositoryIndex:
     """Chunk a repository, embed every chunk, and load them into FAISS."""
     chunks = chunk_repository(repo_path)
     if not chunks:
-        raise ValueError(f"No indexable files found in {repo_path}")
+        raise ValueError("No Python files or docs (.py, .md, .txt, .rst) found in this repository.")
     if len(chunks) > MAX_CHUNKS:
         raise ValueError(
             f"This repository has {len(chunks):,} chunks. RepoGuide handles up to "

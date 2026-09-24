@@ -18,9 +18,10 @@ from app.generator import CODE_SPANS, is_not_found
 # Finds text inside square brackets, e.g. "[a.py:1-2, b.py:5]".
 BRACKETS = re.compile(r"\[([^\[\]]+)\]")
 
-# One citation inside the brackets: "path:start-end" or "path:line".
-# Requiring ":<number>" means things like list[int] are ignored.
-CITATION = re.compile(r"([^\s,;:]+):(\d+)(?:-(\d+))?")
+# One citation inside the brackets: "path:start-end" or "path:line". Paths
+# may contain spaces (docs/User Guide.md); commas and semicolons separate
+# citations. Requiring ":<number>" means things like list[int] are ignored.
+CITATION = re.compile(r"([^,;:\[\]]+?):(\d+)(?:-(\d+))?")
 
 # A bracket standing on its own (not code like args[1]) and not a Markdown
 # link like [text](url). Used to spot malformed citation attempts.
@@ -55,7 +56,7 @@ def extract_citations(answer: str) -> list[Citation]:
     found = []
     for bracket_text in BRACKETS.findall(answer):
         for path, start, end in CITATION.findall(bracket_text):
-            citation = Citation(path, int(start), int(end or start))
+            citation = Citation(path.strip(), int(start), int(end or start))
             if citation not in found:
                 found.append(citation)
     return found

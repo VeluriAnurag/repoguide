@@ -12,11 +12,13 @@ from pathlib import Path
 CLONE_DIR = Path(__file__).parent.parent / "data" / "repos"
 CLONE_TIMEOUT_SECONDS = 120
 
-# https://github.com/<owner>/<repo>, optionally with .git, a trailing slash,
-# or extra parts like /tree/main (which are ignored). The strict character
-# sets mean nothing unusual can reach the git command.
+# Accepts https://github.com/<owner>/<repo> (with or without https:// or www.)
+# and git@github.com:<owner>/<repo>, optionally ending in .git, a slash, a
+# ?query, #anchor, or extra parts like /tree/main, which are all ignored. The
+# strict character sets mean nothing unusual can reach the git command.
 GITHUB_URL = re.compile(
-    r"^(?:https://)?(?:www\.)?github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?:/.*)?$"
+    r"^(?:(?:https://)?(?:www\.)?github\.com/|git@github\.com:)"
+    r"([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?(?:[/?#].*)?$"
 )
 
 
@@ -75,6 +77,8 @@ def resolve_repository(source: str) -> Path:
     source = source.strip()
     if "github.com" in source:
         return clone_github_repo(source)
+    if "://" in source or source.startswith("git@"):
+        raise ValueError(f"Not a GitHub repository URL: {source}. Only public GitHub repos are supported.")
 
     path = Path(source).expanduser()
     if not path.is_dir():

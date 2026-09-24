@@ -16,6 +16,10 @@ from app.github import clone_github_repo, parse_github_url, resolve_repository
         "https://www.github.com/psf/requests",
         "github.com/psf/requests",
         "  https://github.com/psf/requests  ",
+        "https://github.com/psf/requests?tab=readme-ov-file",
+        "https://github.com/psf/requests#readme",
+        "https://github.com/psf/requests/blob/main/README.md",
+        "git@github.com:psf/requests.git",
     ],
 )
 def test_parses_common_github_url_forms(url):
@@ -88,3 +92,8 @@ def test_real_download_of_a_tiny_public_repo(tmp_path):
     except RuntimeError:
         pytest.skip("no internet connection")
     assert (path / "README").is_file()
+
+
+def test_resolve_repository_explains_non_github_links():
+    with pytest.raises(ValueError, match="Only public GitHub repos"):
+        resolve_repository("https://gitlab.com/psf/requests")
