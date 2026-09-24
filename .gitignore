@@ -7,3 +7,4 @@ data/index/
 .pytest_cache/
 .DS_Store
 .claude/
+data/repos/

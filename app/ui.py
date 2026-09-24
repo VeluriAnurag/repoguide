@@ -14,6 +14,7 @@ import streamlit as st
 from app.citations import citation_summary, is_supported, validate_citations
 from app.embeddings import EmbeddingModel
 from app.generator import generate_answer
+from app.github import resolve_repository
 from app.retriever import build_index, retrieve
 
 SAMPLE_REPO = Path(__file__).parent.parent / "tests" / "fixtures" / "sample_repo"
@@ -27,12 +28,13 @@ def get_embedding_model() -> EmbeddingModel:
     return EmbeddingModel()
 
 
-def index_repository(repo_path: str) -> None:
-    """Build the index and store it in session_state so it survives reruns."""
+def index_repository(source: str) -> None:
+    """Download (if it's a GitHub URL) and index a repo, keeping the result
+    in session_state so it survives reruns."""
     start = time.perf_counter()
-    index = build_index(repo_path, get_embedding_model())
+    index = build_index(str(resolve_repository(source)), get_embedding_model())
     st.session_state.index = index
-    st.session_state.indexed_path = repo_path
+    st.session_state.indexed_path = source
     st.session_state.index_stats = (
         len(index.chunks),
         len({c.file_path for c in index.chunks}),
@@ -42,19 +44,20 @@ def index_repository(repo_path: str) -> None:
 
 def show_sidebar() -> None:
     st.sidebar.header("Repository")
-    repo_path = st.sidebar.text_input("Path to a Python project", value=str(SAMPLE_REPO))
+    source = st.sidebar.text_input(
+        "Local folder or public GitHub URL",
+        value=str(SAMPLE_REPO),
+        help="e.g. https://github.com/psf/requests",
+    )
 
     if st.sidebar.button("Index repository", type="primary"):
-        if not Path(repo_path).is_dir():
-            st.sidebar.error("That folder doesn't exist.")
-        else:
-            with st.sidebar.status("Indexing...") as status:
-                try:
-                    index_repository(repo_path)
-                    status.update(label="Indexed", state="complete")
-                except ValueError as e:
-                    status.update(label="Indexing failed", state="error")
-                    st.sidebar.error(str(e))
+        with st.sidebar.status("Downloading and indexing (big repos take a minute or two)...") as status:
+            try:
+                index_repository(source)
+                status.update(label="Indexed", state="complete")
+            except (ValueError, RuntimeError) as e:
+                status.update(label="Indexing failed", state="error")
+                st.sidebar.error(str(e))
 
     if "index" in st.session_state:
         chunks, files, seconds = st.session_state.index_stats

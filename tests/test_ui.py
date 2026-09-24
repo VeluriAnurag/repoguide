@@ -28,7 +28,7 @@ def test_missing_folder_shows_error_instead_of_crashing():
     at.sidebar.button[0].click().run()
 
     assert not at.exception
-    assert at.sidebar.error[0].value == "That folder doesn't exist."
+    assert at.sidebar.error[0].value.startswith("That folder doesn't exist")
 
 
 @pytest.mark.slow

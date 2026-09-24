@@ -33,11 +33,21 @@ class EmbeddingModel:
 
     def encode_documents(self, texts: list[str]) -> np.ndarray:
         """Embed chunks to be stored in the index. Shape: (len(texts), dim)."""
+        # Every text in a batch is padded to the longest one, so mixing short
+        # and long texts wastes work. Embedding them shortest-to-longest keeps
+        # similar lengths together (about half the work on real repos), then
+        # we put the vectors back in the original order.
+        order = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+        sorted_texts = [texts[i] for i in order]
         batches = [
-            self._encode_batch(texts[i : i + BATCH_SIZE])
-            for i in range(0, len(texts), BATCH_SIZE)
+            self._encode_batch(sorted_texts[i : i + BATCH_SIZE])
+            for i in range(0, len(sorted_texts), BATCH_SIZE)
         ]
-        return np.concatenate(batches)
+        sorted_vectors = np.concatenate(batches)
+
+        vectors = np.empty_like(sorted_vectors)
+        vectors[order] = sorted_vectors
+        return vectors
 
     def encode_query(self, query: str) -> np.ndarray:
         """Embed a single search query. Shape: (dim,)."""

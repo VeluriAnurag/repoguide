@@ -5,7 +5,12 @@ import time
 
 from app.chunker import Chunk, chunk_repository
 from app.embeddings import EmbeddingModel
+from app.github import resolve_repository
 from app.index import RepositoryIndex, SearchResult
+
+# Embedding runs at roughly 25 chunks/second on a laptop CPU, so 3,000 chunks
+# is about two minutes. Bigger repos get a clear error instead of a long wait.
+MAX_CHUNKS = 3000
 
 
 def embedding_text(chunk: Chunk) -> str:
@@ -26,6 +31,11 @@ def build_index(repo_path: str, embedding_model) -> RepositoryIndex:
     chunks = chunk_repository(repo_path)
     if not chunks:
         raise ValueError(f"No indexable files found in {repo_path}")
+    if len(chunks) > MAX_CHUNKS:
+        raise ValueError(
+            f"This repository has {len(chunks):,} chunks. RepoGuide handles up to "
+            f"{MAX_CHUNKS:,} (about two minutes of indexing on a laptop)."
+        )
 
     embeddings = embedding_model.encode_documents([embedding_text(c) for c in chunks])
     index = RepositoryIndex()
@@ -43,7 +53,7 @@ def retrieve(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search a repository with a question.")
-    parser.add_argument("repo_path")
+    parser.add_argument("repo", help="local folder or GitHub URL")
     parser.add_argument("question")
     parser.add_argument("-k", type=int, default=5, help="number of results")
     parser.add_argument("--show-code", action="store_true", help="print chunk text")
@@ -51,7 +61,7 @@ def main() -> None:
 
     model = EmbeddingModel()
     start = time.perf_counter()
-    index = build_index(args.repo_path, model)
+    index = build_index(str(resolve_repository(args.repo)), model)
     print(f"Indexed {len(index.chunks)} chunks in {time.perf_counter() - start:.1f}s\n")
 
     for rank, result in enumerate(retrieve(args.question, model, index, k=args.k), 1):
