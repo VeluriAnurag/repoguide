@@ -1,9 +1,16 @@
 """Answer generation with a local Llama 3.2 model served by Ollama.
 
-The model only sees the chunks we retrieved, each labeled with its citation
-(e.g. [bookstore/db.py:10-15]). The system prompt tells it to answer from
-those chunks only and to cite the labels. Milestone 4 checks the citations.
+The model sees the retrieved chunks as numbered sources and cites them by
+number, like [1] or [2][3]. Our code then swaps each number for the chunk's
+real location (e.g. [bookstore/db.py:10-15]), so the model never has to copy
+file paths or line numbers itself. citations.py checks the final answer.
+
+Why numbers: in a test on 8 questions about the psf/requests repo, asking the
+model to copy labels like [docs/user/advanced.rst:1051-1100] gave 10 valid and
+5 broken citations; numbered sources gave 20 valid and 0 broken.
 """
+
+import re
 
 import ollama
 
@@ -12,18 +19,21 @@ DEFAULT_LLM = "llama3.2"
 # What the model is told to say when the context doesn't answer the question.
 NOT_FOUND_MESSAGE = "I couldn't find that in the retrieved code."
 
-# The citation example below is deliberately a placeholder. With a realistic
-# example like [src/db.py:12-29], Llama 3.2 copied the "src/" folder into its
-# citations (0 of 7 valid in a small test); with this one, 9 of 9 were valid.
-
 SYSTEM_PROMPT = f"""You are RepoGuide, an assistant that explains a Python codebase.
 
 Rules:
-1. Answer using ONLY the code and docs in the context. Do not use outside knowledge about this repository.
-2. After every claim, cite the source label exactly as written in the context, in square brackets, e.g. [folder/file.py:START-END] where you copy the real label from the context.
-3. Only cite labels that appear in the context. Never make up file names or line numbers.
-4. If the context does not contain the answer, say "{NOT_FOUND_MESSAGE}" and stop.
+1. Answer using ONLY the numbered sources in the context. Do not use outside knowledge about this repository.
+2. After every claim, cite the source number in square brackets, like [1] or [2][3].
+3. Only use source numbers that appear in the context.
+4. If the sources do not contain the answer, say "{NOT_FOUND_MESSAGE}" and stop.
 5. Be concise: a few sentences, not an essay."""
+
+# A source reference like [2] or [1, 3], unless it's attached to a name or
+# closing bracket/parenthesis, as in code such as args[1] or f(x)[0].
+SOURCE_NUMBERS = re.compile(r"(?<![\w)])\[(\d+(?:\s*,\s*\d+)*)\]")
+
+# Code in backticks (```blocks``` or `inline`) is left untouched.
+CODE_SPANS = re.compile(r"(```.*?```|`[^`\n]*`)", re.DOTALL)
 
 
 def is_not_found(answer: str) -> bool:
@@ -32,8 +42,11 @@ def is_not_found(answer: str) -> bool:
 
 
 def format_context(results) -> str:
-    """Turn search results into labeled blocks the model can cite."""
-    blocks = [f"[{r.chunk.citation}]\n{r.chunk.text}" for r in results]
+    """Turn search results into numbered sources the model can cite."""
+    blocks = [
+        f"Source [{i}] {r.chunk.citation}\n{r.chunk.text}"
+        for i, r in enumerate(results, start=1)
+    ]
     return "\n\n".join(blocks)
 
 
@@ -41,12 +54,32 @@ def build_messages(question: str, results) -> list[dict]:
     user_message = (
         f"Context:\n\n{format_context(results)}\n\n"
         f"Question: {question}\n"
-        "Answer with citations:"
+        "Answer with source numbers:"
     )
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_message},
     ]
+
+
+def replace_source_numbers(answer: str, results) -> str:
+    """Swap [1], [2]... for the real file and line citations.
+
+    Numbers that don't match a source (e.g. [7] with only 5 sources) are left
+    as they are so the citation check can flag them.
+    """
+
+    def to_citations(match: re.Match) -> str:
+        numbers = [int(n) for n in re.findall(r"\d+", match.group(1))]
+        if not all(1 <= n <= len(results) for n in numbers):
+            return match.group(0)
+        return "".join(f"[{results[n - 1].chunk.citation}]" for n in numbers)
+
+    # re.split with a capturing group keeps the code spans at odd positions.
+    parts = CODE_SPANS.split(answer)
+    for i in range(0, len(parts), 2):
+        parts[i] = SOURCE_NUMBERS.sub(to_citations, parts[i])
+    return "".join(parts)
 
 
 def generate_answer(question: str, results, model: str = DEFAULT_LLM, client=None) -> str:
@@ -67,4 +100,4 @@ def generate_answer(question: str, results, model: str = DEFAULT_LLM, client=Non
             raise RuntimeError(f"Model '{model}' isn't downloaded. Run: ollama pull {model}") from e
         raise
 
-    return response.message.content.strip()
+    return replace_source_numbers(response.message.content.strip(), results)

@@ -104,6 +104,36 @@ def test_answer_without_citations_is_not_ok():
     assert not report.ok
 
 
+# --- Malformed citations -------------------------------------------------------
+
+
+def test_placeholder_copied_by_the_model_is_malformed():
+    # Real Llama output on the psf/requests repo.
+    report = validate_citations("It uses Retry [urllib3.util.Retry:START-END].", CHUNKS)
+
+    assert report.malformed == ["[urllib3.util.Retry:START-END]"]
+    assert not report.ok
+
+
+def test_source_number_that_does_not_exist_is_malformed():
+    report = validate_citations("Opened here [bookstore/db.py:10-15] and [7].", CHUNKS)
+
+    assert report.malformed == ["[7]"]
+    assert not report.ok
+
+
+def test_normal_brackets_code_and_links_are_not_malformed():
+    answer = (
+        "See [the docs](https://example.com) and [https://x.io]. "
+        "`args[1]` and rows[0] and `{'a': 1}[x]` are code. Valid [bookstore/db.py:10-15]."
+    )
+
+    report = validate_citations(answer, CHUNKS)
+
+    assert report.malformed == []
+    assert report.ok
+
+
 # --- Summary shown to the user ------------------------------------------------
 
 
@@ -126,6 +156,13 @@ def test_summary_when_answer_was_not_found():
         "info",
         "No citations (the answer wasn't in the retrieved code).",
     )
+
+
+def test_summary_names_malformed_citations():
+    level, message = citation_summary("Uses Retry [Retry:START-END].", CHUNKS)
+
+    assert level == "warning"
+    assert "[Retry:START-END]" in message
 
 
 def test_summary_warns_when_real_answer_has_no_citations():

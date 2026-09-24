@@ -6,7 +6,13 @@ import pytest
 
 from app.chunker import Chunk
 from app.citations import validate_citations
-from app.generator import build_messages, format_context, generate_answer, is_not_found
+from app.generator import (
+    build_messages,
+    format_context,
+    generate_answer,
+    is_not_found,
+    replace_source_numbers,
+)
 from app.index import SearchResult
 
 SAMPLE_REPO = Path(__file__).parent / "fixtures" / "sample_repo"
@@ -20,7 +26,7 @@ RESULTS = [
 class FakeOllamaClient:
     """Records what it was asked and returns a canned answer."""
 
-    def __init__(self, reply="The connection is opened in get_connection [bookstore/db.py:10-15]."):
+    def __init__(self, reply="The connection is opened in get_connection [1]."):
         self.reply = reply
         self.calls = []
 
@@ -37,9 +43,10 @@ class FailingClient:
         raise self.error
 
 
-def test_format_context_labels_each_chunk_with_its_citation():
+def test_format_context_numbers_each_source():
     assert format_context(RESULTS) == (
-        "[bookstore/db.py:10-15]\ndef get_connection(): ...\n\n[README.md:5-12]\n## Setup"
+        "Source [1] bookstore/db.py:10-15\ndef get_connection(): ...\n\n"
+        "Source [2] README.md:5-12\n## Setup"
     )
 
 
@@ -48,18 +55,43 @@ def test_build_messages_has_rules_then_context_and_question():
 
     assert system["role"] == "system" and "ONLY" in system["content"]
     assert user["role"] == "user"
-    assert "[bookstore/db.py:10-15]" in user["content"]
+    assert "Source [1] bookstore/db.py:10-15" in user["content"]
     assert "Question: where is the db?" in user["content"]
 
 
-def test_system_prompt_example_is_not_a_realistic_path():
-    # Regression: a realistic example path ([src/db.py:12-29]) got copied into
-    # the model's citations. The example must stay an obvious placeholder.
+def test_system_prompt_asks_for_source_numbers_not_paths():
+    # Regression: when asked to copy file labels, the model copied example
+    # paths (src/...) and placeholders (START-END) into its citations.
     system, _ = build_messages("q", RESULTS)
-    assert "src/" not in system["content"]
+    assert "[1]" in system["content"]
+    assert "src/" not in system["content"] and "START" not in system["content"]
 
 
-def test_generate_answer_calls_model_and_strips_whitespace():
+def test_replace_source_numbers_with_real_citations():
+    answer = "Opened in get_connection [1]. See setup [2][1] and [1, 2]."
+
+    assert replace_source_numbers(answer, RESULTS) == (
+        "Opened in get_connection [bookstore/db.py:10-15]. "
+        "See setup [README.md:5-12][bookstore/db.py:10-15] and "
+        "[bookstore/db.py:10-15][README.md:5-12]."
+    )
+
+
+def test_replace_leaves_code_and_unknown_numbers_alone():
+    answer = "Uses `args[1]` and rows[0], `x = y [1]`, then items()[1] and [7]."
+
+    assert replace_source_numbers(answer, RESULTS) == answer
+
+
+def test_replace_skips_code_blocks():
+    answer = "Run this [1]:\n```python\nprint(sys.argv [1])\n```"
+
+    assert replace_source_numbers(answer, RESULTS) == (
+        "Run this [bookstore/db.py:10-15]:\n```python\nprint(sys.argv [1])\n```"
+    )
+
+
+def test_generate_answer_calls_model_and_converts_source_numbers():
     client = FakeOllamaClient()
 
     answer = generate_answer("where is the db?", RESULTS, model="llama3.2", client=client)

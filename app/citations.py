@@ -3,13 +3,17 @@
 This is plain rule-based code, no AI: the same answer always gets the same
 result. A citation like [bookstore/db.py:12-13] is valid if some retrieved
 chunk is from that file and its line range covers lines 12-13.
+
+It also flags "malformed" citations: brackets that look like the model tried
+to cite something but didn't produce a real location, such as a source number
+that doesn't exist ([7] with 5 sources) or [Retry:START-END].
 """
 
 import re
 from dataclasses import dataclass
 
 from app.chunker import Chunk
-from app.generator import is_not_found
+from app.generator import CODE_SPANS, is_not_found
 
 # Finds text inside square brackets, e.g. "[a.py:1-2, b.py:5]".
 BRACKETS = re.compile(r"\[([^\[\]]+)\]")
@@ -17,6 +21,11 @@ BRACKETS = re.compile(r"\[([^\[\]]+)\]")
 # One citation inside the brackets: "path:start-end" or "path:line".
 # Requiring ":<number>" means things like list[int] are ignored.
 CITATION = re.compile(r"([^\s,;:]+):(\d+)(?:-(\d+))?")
+
+# A bracket standing on its own (not code like args[1]) and not a Markdown
+# link like [text](url). Used to spot malformed citation attempts.
+STANDALONE_BRACKET = re.compile(r"(?<![\w)])\[([^\[\]]+)\](?!\()")
+LEFTOVER_SOURCE_NUMBER = re.compile(r"^\d+(?:\s*,\s*\d+)*$")
 
 
 @dataclass(frozen=True)
@@ -33,11 +42,12 @@ class Citation:
 class CitationReport:
     valid: list[Citation]
     invalid: list[Citation]
+    malformed: list[str]
 
     @property
     def ok(self) -> bool:
-        """True when there is at least one citation and none are invalid."""
-        return bool(self.valid) and not self.invalid
+        """True when there is at least one citation and nothing is wrong."""
+        return bool(self.valid) and not self.invalid and not self.malformed
 
 
 def extract_citations(answer: str) -> list[Citation]:
@@ -49,6 +59,20 @@ def extract_citations(answer: str) -> list[Citation]:
             if citation not in found:
                 found.append(citation)
     return found
+
+
+def find_malformed(answer: str) -> list[str]:
+    """Bracketed text that looks like a failed citation, e.g. "[7]"."""
+    prose = CODE_SPANS.sub(" ", answer)  # ignore code in backticks
+    malformed = []
+    for text in STANDALONE_BRACKET.findall(prose):
+        text = text.strip()
+        looks_like_citation = LEFTOVER_SOURCE_NUMBER.match(text) or (
+            ":" in text and not text.startswith("http") and not CITATION.search(text)
+        )
+        if looks_like_citation and f"[{text}]" not in malformed:
+            malformed.append(f"[{text}]")
+    return malformed
 
 
 def is_supported(citation: Citation, chunks: list[Chunk]) -> bool:
@@ -71,7 +95,7 @@ def validate_citations(answer: str, retrieved_chunks: list[Chunk]) -> CitationRe
             valid.append(citation)
         else:
             invalid.append(citation)
-    return CitationReport(valid=valid, invalid=invalid)
+    return CitationReport(valid=valid, invalid=invalid, malformed=find_malformed(answer))
 
 
 def citation_summary(answer: str, retrieved_chunks: list[Chunk]) -> tuple[str, str]:
@@ -81,8 +105,8 @@ def citation_summary(answer: str, retrieved_chunks: list[Chunk]) -> tuple[str, s
     the terminal and the web UI can each display it their own way.
     """
     report = validate_citations(answer, retrieved_chunks)
-    if report.invalid:
-        bad = ", ".join(str(c) for c in report.invalid)
+    if report.invalid or report.malformed:
+        bad = ", ".join([str(c) for c in report.invalid] + report.malformed)
         return "warning", f"These citations don't match any retrieved code: {bad}"
     if report.valid:
         n = len(report.valid)
