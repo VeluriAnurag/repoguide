@@ -7,3 +7,22 @@ gatherUsageStats = false
 address = "localhost"
 # Skip Streamlit's first-run email prompt in the terminal.
 headless = true
+
+[theme]
+base = "dark"
+primaryColor = "#7C83FF"
+backgroundColor = "#0B1020"
+secondaryBackgroundColor = "#151B2E"
+textColor = "#E6E8F0"
+borderColor = "#2A3150"
+showWidgetBorder = true
+baseRadius = "0.75rem"
+baseFontSize = 17
+
+[theme.sidebar]
+backgroundColor = "#101629"
+secondaryBackgroundColor = "#1A2138"
+
+[client]
+# Hide Streamlit's own "Deploy" button and developer menu items.
+toolbarMode = "minimal"
