@@ -2,7 +2,7 @@
 
 Usage:
     hf auth login                                   # once, with your own token
-    python scripts/deploy_space.py <your-hf-username>/repoguide
+    python scripts/deploy_space.py <your-hf-username>
 
 Hugging Face builds the Dockerfile and serves the app at
 https://huggingface.co/spaces/<your-hf-username>/repoguide
@@ -14,6 +14,7 @@ from pathlib import Path
 from huggingface_hub import HfApi
 
 ROOT = Path(__file__).parent.parent
+SPACE_NAME = "repoguide"
 
 # Settings Hugging Face reads from the top of the Space's README. They're only
 # added to the uploaded copy, so the GitHub README stays clean.
@@ -36,9 +37,9 @@ SKIP = [
 
 
 def main() -> None:
-    if len(sys.argv) != 2 or "/" not in sys.argv[1]:
-        sys.exit("usage: python scripts/deploy_space.py <your-hf-username>/<space-name>")
-    space_id = sys.argv[1]
+    if len(sys.argv) != 2 or "/" in sys.argv[1]:
+        sys.exit("usage: python scripts/deploy_space.py <your-hf-username>")
+    space_id = f"{sys.argv[1]}/{SPACE_NAME}"
 
     api = HfApi()
     api.create_repo(space_id, repo_type="space", space_sdk="docker", exist_ok=True)
@@ -51,7 +52,7 @@ def main() -> None:
         path_or_fileobj=readme.encode(), path_in_repo="README.md",
         repo_id=space_id, repo_type="space", commit_message="Update README",
     )
-    print(f"Uploaded. Hugging Face is building it now (about 10-15 minutes):")
+    print("Uploaded. Hugging Face is building it now (about 10-15 minutes):")
     print(f"https://huggingface.co/spaces/{space_id}")
 
 

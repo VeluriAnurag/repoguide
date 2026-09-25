@@ -117,7 +117,7 @@ The `Dockerfile` runs Ollama (Llama 3.2) and the Streamlit app together in one c
 
 ```bash
 hf auth login                                        # once, with a Hugging Face access token
-python scripts/deploy_space.py <hf-username>/repoguide
+python scripts/deploy_space.py <hf-username>    # creates the Space "repoguide"
 ```
 
 The public version runs with `REPOGUIDE_PUBLIC=1`, which changes a few things for safety:

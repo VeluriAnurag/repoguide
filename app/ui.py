@@ -28,7 +28,7 @@ TOP_K = 5
 PUBLIC_MODE = os.environ.get("REPOGUIDE_PUBLIC") == "1"
 
 AUTHOR_NAME = "Anurag Veluri"
-LINKEDIN_URL = ""  # TODO: paste your LinkedIn profile URL here
+LINKEDIN_URL = "https://www.linkedin.com/in/anurag-veluri-bb7069308/"
 
 EXAMPLE_REPOS = {
     "🌐 psf/requests": "https://github.com/psf/requests",
