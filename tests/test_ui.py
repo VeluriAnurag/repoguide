@@ -18,7 +18,7 @@ def test_page_loads_with_welcome_steps():
     at = load_app()
 
     assert not at.exception
-    assert at.title[0].value == "🔎 RepoGuide"
+    assert any("RepoGuide" in m.value for m in at.markdown)
     assert any("Paste a repo" in m.value for m in at.markdown)
     assert len(at.text_input) == 1  # only the repo box
     assert len(at.chat_input) == 0  # no chat until a repo is indexed

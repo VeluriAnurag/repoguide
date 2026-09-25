@@ -94,7 +94,7 @@ def repo_display_name(name: str) -> str:
 
 
 def show_sidebar() -> None:
-    st.sidebar.markdown("### 📦 Repository")
+    st.sidebar.markdown("##### 📦&nbsp; Repository")
 
     # A form means pressing Enter in the box submits it, same as the button.
     with st.sidebar.form("repo_form"):
@@ -133,7 +133,7 @@ def show_sidebar() -> None:
             st.rerun()
 
     st.sidebar.divider()
-    st.sidebar.caption("Runs locally · BGE embeddings + FAISS · Llama 3.2 via Ollama")
+    st.sidebar.caption("Open models only · BGE embeddings + FAISS · Llama 3.2 via Ollama")
 
 
 # --- Answers -------------------------------------------------------------------
@@ -271,12 +271,49 @@ def show_top_bar() -> None:
         show_about()
 
 
+# Styling that Streamlit's theme settings can't do (widths, gradients, hover
+# effects). The theme colors themselves live in .streamlit/config.toml.
+CUSTOM_CSS = """
+<style>
+[data-testid="stMainBlockContainer"] { max-width: 1120px; padding-top: 2rem; }
+.rg-hero { margin: 0.5rem 0 0.25rem; white-space: nowrap; }
+.rg-hero .rg-emoji { font-size: 3rem; vertical-align: middle; margin-right: 0.6rem; }
+.rg-hero .rg-name {
+    font-size: 3.6rem; font-weight: 800; letter-spacing: -0.02em; vertical-align: middle;
+    background: linear-gradient(90deg, #C7D2FE, #7C83FF 45%, #38BDF8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.rg-tagline { font-size: 1.3rem; opacity: 0.85; margin: 0.25rem 0 0.75rem; }
+@media (max-width: 640px) {  /* phones: smaller title so it fits on one line */
+    .rg-hero .rg-emoji { font-size: 2rem; }
+    .rg-hero .rg-name { font-size: 2.5rem; }
+    .rg-tagline { font-size: 1.1rem; }
+}
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"] {
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlockBorderWrapper"]:hover {
+    transform: translateY(-3px); border-color: #7C83FF;
+    box-shadow: 0 8px 24px rgba(124, 131, 255, 0.15);
+}
+[data-testid="stChatMessage"] {
+    background: #121932; border: 1px solid #2A3150; border-radius: 1rem; padding: 1rem 1.25rem;
+}
+</style>
+"""
+
+
 def show_header() -> None:
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     show_top_bar()
-    st.title("🔎 RepoGuide")
     st.markdown(
-        "Ask questions about any Python codebase and get answers that cite the exact files and lines.  \n"
-        ":green-badge[Runs locally] :violet-badge[Llama 3.2] "
+        "<div class='rg-hero'><span class='rg-emoji'>🔎</span> <span class='rg-name'>RepoGuide</span></div>"
+        "<div class='rg-tagline'>Ask questions about any Python codebase and get answers "
+        "that cite the exact files and lines.</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        ":green-badge[No paid APIs] :violet-badge[Llama 3.2] "
         ":blue-badge[BGE + FAISS] :orange-badge[Checked citations]"
     )
 
@@ -292,6 +329,18 @@ def show_welcome() -> None:
         with column.container(border=True, height="stretch"):
             st.markdown(f"### {icon}\n**{title}**")
             st.caption(text)
+
+    st.write("")
+    st.markdown("#### What an answer looks like")
+    with st.container(border=True):
+        st.markdown("🧑‍💻&nbsp; **Where is the database connection initialized?**")
+        st.markdown(
+            "🔎&nbsp; The database connection is initialized in the `get_connection` function, "
+            "which opens a SQLite connection with `sqlite3.connect(DB_PATH)` and caches it "
+            "so it's reused `bookstore/db.py:10-15`."
+        )
+        st.success("Citations checked: 1 of 1 match the retrieved code.", icon="✅")
+        st.caption("A real answer from the sample bookstore app. Try it from the sidebar.")
 
 
 def show_chat() -> None:
@@ -327,7 +376,7 @@ def show_chat() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="RepoGuide", page_icon="🔎", layout="centered")
+    st.set_page_config(page_title="RepoGuide", page_icon="🔎", layout="wide")
     st.session_state.setdefault("messages", [])
 
     show_header()

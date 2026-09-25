@@ -18,6 +18,7 @@ borderColor = "#2A3150"
 showWidgetBorder = true
 baseRadius = "0.75rem"
 baseFontSize = 17
+headingFontWeights = [800, 700]
 
 [theme.sidebar]
 backgroundColor = "#101629"
