@@ -16,7 +16,7 @@ import streamlit as st
 from app.citations import BRACKETS, CITATION, citation_summary, is_supported, validate_citations
 from app.embeddings import EmbeddingModel
 from app.generator import CODE_SPANS, generate_answer
-from app.github import canonical_name, resolve_repository
+from app.github import canonical_source, parse_github_url, resolve_repository
 from app.index import RepositoryIndex
 from app.retriever import build_index, retrieve
 
@@ -73,7 +73,7 @@ def load_index(name: str) -> tuple[RepositoryIndex, float]:
 
 def index_repository(source: str) -> None:
     """Load the index for a repo into this visitor's session and start a fresh chat."""
-    name = canonical_name(source)
+    name = canonical_source(source)
     index, seconds = load_index(name)
     st.session_state.index = index
     st.session_state.indexed_path = name
@@ -85,12 +85,12 @@ def index_repository(source: str) -> None:
     st.session_state.messages = []
 
 
-def repo_display_name(name: str) -> str:
-    if name == str(SAMPLE_REPO):
+def repo_display_name(source: str) -> str:
+    if source == str(SAMPLE_REPO):
         return "Sample bookstore app"
-    if "github.com" in name:
-        name = canonical_name(name)
-    return name if name.count("/") == 1 and not name.startswith("/") else Path(name).name
+    if "github.com" in source:
+        return "/".join(parse_github_url(source))
+    return Path(source).name
 
 
 def show_sidebar() -> None:

@@ -89,12 +89,14 @@ def remove_old_repos(clone_dir: Path, keep: int) -> None:
         shutil.rmtree(old, ignore_errors=True)
 
 
-def canonical_name(source: str) -> str:
-    """Same repo, same name: 'psf/requests' for any form of its GitHub URL.
-    Local paths are returned unchanged."""
+def canonical_source(source: str) -> str:
+    """One standard form per repo, so every way of writing the same GitHub
+    link maps to https://github.com/<owner>/<repo>. Local paths are returned
+    unchanged. The result can still be passed to resolve_repository."""
     source = source.strip()
     if "github.com" in source:
-        return "/".join(parse_github_url(source))
+        owner, repo = parse_github_url(source)
+        return f"https://github.com/{owner}/{repo}"
     return source
 
 

@@ -105,15 +105,15 @@ def test_public_mode_refuses_local_paths(tmp_path):
         resolve_repository(str(tmp_path), allow_local=False)
 
 
-def test_canonical_name_is_the_same_for_every_url_form():
+def test_canonical_source_is_the_same_for_every_url_form():
     forms = [
         "https://github.com/psf/requests",
         "https://github.com/psf/requests.git",
         "https://github.com/psf/requests?tab=readme-ov-file",
         "git@github.com:psf/requests.git",
     ]
-    assert {github.canonical_name(f) for f in forms} == {"psf/requests"}
-    assert github.canonical_name("/Users/me/project") == "/Users/me/project"
+    assert {github.canonical_source(f) for f in forms} == {"https://github.com/psf/requests"}
+    assert github.canonical_source("/Users/me/project") == "/Users/me/project"
 
 
 def test_remove_old_repos_keeps_most_recently_used(tmp_path):

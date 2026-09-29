@@ -101,3 +101,28 @@ def test_public_mode_blocks_folder_paths(monkeypatch):
     assert not at.exception
     assert "public GitHub repository link" in at.sidebar.error[0].value
     assert "index" not in at.session_state
+
+
+@pytest.mark.slow
+def test_pasting_a_github_link_indexes_it(monkeypatch):
+    # Regression: the shared index cache was keyed by "owner/repo", which then
+    # got treated as a folder path ("That folder doesn't exist").
+    import app.github
+
+    downloads = []
+
+    def fake_clone(url, *args, **kwargs):
+        downloads.append(url)
+        return Path(SAMPLE_REPO)
+
+    monkeypatch.setattr(app.github, "clone_github_repo", fake_clone)
+    at = load_app()
+
+    at.sidebar.text_input[0].set_value("https://github.com/someone/test-repo?tab=readme-ov-file")
+    at.sidebar.button[0].click().run()
+
+    assert not at.exception
+    assert not at.sidebar.error
+    assert downloads == ["https://github.com/someone/test-repo"]
+    assert any(m.value == "**someone/test-repo**" for m in at.sidebar.markdown)
+    assert len(at.chat_input) == 1
