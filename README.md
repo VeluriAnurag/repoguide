@@ -1,152 +1,139 @@
-# RepoGuide
+# 🔎 RepoGuide
 
-RepoGuide answers questions about a Python codebase and shows exactly which files and lines the answer came from. Point it at a local folder or any public GitHub repository. Everything runs locally on my laptop, with no paid APIs.
+**Ask questions about any Python codebase and get answers that cite the exact files and lines.**
 
-**Stack:** Python, Llama 3.2 (via Ollama), Hugging Face BGE embeddings, FAISS, Streamlit
+Paste a public GitHub link, ask something like *"Where is the Value class defined?"*, and RepoGuide answers using only the repo's real code, with citations like `micrograd/engine.py:2-3` that you can open and check. Everything runs on my laptop with open models: no paid AI APIs.
 
-> Work in progress. The full pipeline and web UI work; I'm now measuring search quality (see [Status](#status)).
+**Built with:** Python · Llama 3.2 (Ollama) · Hugging Face BGE embeddings · FAISS · Streamlit · pytest
 
-![RepoGuide demo: paste a GitHub link, ask a question, get an answer with checked citations](docs/demo.gif)
+![RepoGuide demo: paste a GitHub link, ask simple questions, get answers with checked citations](docs/demo.gif)
 
-*28-second demo: indexing [karpathy/micrograd](https://github.com/karpathy/micrograd) and asking how backpropagation works. [Full-quality video](docs/repoguide-demo.mp4).*
+*35-second demo: indexing [karpathy/micrograd](https://github.com/karpathy/micrograd) and asking two simple questions. [Full-quality video](docs/repoguide-demo.mp4).*
 
-| Home | Answer with sources |
+| Home | Answer with checked citations |
 |---|---|
-| ![RepoGuide home page](docs/screenshot-home.png) | ![An answer with its cited source code](docs/screenshot-answer.png) |
+| ![RepoGuide home page](docs/screenshot-home.png) | ![An answer with citations](docs/screenshot-answer.png) |
 
-## Web UI
+## What It Does
 
-```bash
-python -m streamlit run app/ui.py
-```
-
-Then open http://localhost:8501, paste a folder path or a GitHub URL (like `https://github.com/psf/requests`), click **Index repository**, and ask a question. The page shows the answer, whether its citations check out, and the code for each source, with cited sources opened and marked.
-
-## Command Line Example
-
-```bash
-python -m app.ask tests/fixtures/sample_repo "where is the database connection initialized?"
-```
-
-```text
-The database connection is initialized in the `get_connection` function, which is
-decorated with `@functools.lru_cache(maxsize=1)`. [bookstore/db.py:10-15]
-
-This function opens a SQLite connection using `sqlite3.connect(DB_PATH)` and returns
-the connection object. [bookstore/db.py:10-15]
-
-Citations checked: 2 of 2 match the retrieved code.
-```
-
-Every bracket is a citation you can check: `bookstore/db.py:10-15` is exactly where `get_connection` lives. RepoGuide also checks them automatically and warns about any citation that doesn't match the code the model was given. If the answer isn't in the code, RepoGuide says so instead of guessing (for example, asking how the sample app sends emails gives "I couldn't find that in the retrieved code").
-
-The command line tools also accept GitHub URLs:
-
-```bash
-python -m app.ask https://github.com/psf/requests "How does requests handle HTTP redirects?"
-```
-
-To see just the search results without the LLM:
-
-```bash
-python -m app.retriever tests/fixtures/sample_repo "where is the database connection initialized?"
-```
+- **Works with any public GitHub repo** (or a local folder). Paste a link and it downloads and indexes the code in seconds.
+- **Answers in plain English** using Llama 3.2, but only from code it actually found in the repo.
+- **Cites every claim** with a file and line range, and shows the cited code right under the answer.
+- **Checks its own citations.** If the model cites something it wasn't shown, RepoGuide flags it instead of hiding it.
+- **Says when it doesn't know.** Asking how the sample app sends emails gets "I couldn't find that in the retrieved code."
 
 ## How It Works
 
 ```text
-Python repo (local folder, or GitHub URL -> downloaded to data/repos/)
-  -> find files        skip folders like .git, .venv, node_modules
-  -> split into chunks one chunk per function/class, with file + line numbers
-  -> embed chunks      BGE turns each chunk into 384 numbers that capture its meaning
-  -> FAISS index       finds the chunks closest to a question
-  -> Llama 3.2         writes an answer using only those chunks, with citations
-  -> check citations   flag any citation that isn't in the retrieved chunks
-  -> Streamlit UI      answer, citation check, and the code behind each source
+GitHub link or folder
+  -> download          shallow git clone (latest version only)
+  -> split into chunks one chunk per function/class using Python's ast module,
+                       each with its file path and line numbers
+  -> embed             BGE turns each chunk into 384 numbers that capture its meaning
+  -> search            FAISS finds the 5 chunks closest to the question
+  -> answer            Llama 3.2 answers from those 5 chunks and cites them as [1], [2]
+  -> cite + check      code swaps [1] for the real file:lines and checks every citation
+  -> show              Streamlit chat with the answer, the check, and the cited code
 ```
 
-Every chunk keeps its file path and line numbers the whole way through, which is what makes citations like `bookstore/db.py:10-15` possible.
+The key idea: every chunk keeps its file path and line numbers the whole way through, so citations always point to real lines.
 
-## Design Decisions
+## What I Learned Building It
 
-**Splitting code by function, not by character count.** I use Python's built-in `ast` module to find where each function and class starts and ends, so a search result is a complete function instead of half of one. Code outside functions (imports, constants) is kept too, and large classes are split into their methods.
+**Split code where Python splits it.** I use the `ast` module to find where each function and class starts and ends, so a search result is a complete function, not half of one. A test checks that every line of code lands in exactly one chunk with the right line numbers. I also ran that check on Python's entire standard library (2,375 files, 0 errors).
 
-**Adding the file name to what gets embedded.** Before embedding a chunk, I add a short header like `File: bookstore/db.py`. File and function names say a lot about what code does, so this helps search.
+**PyTorch and FAISS crashed together on my Mac.** I traced it to both libraries bundling their own copy of OpenMP (a library for using multiple CPU cores). The common fix online hides the error but can give wrong results, so instead I switched to ONNX Runtime to run the same Hugging Face model. I checked the outputs matched PyTorch (difference ~0.0000002) before switching, and it cut the install by about 500 MB.
 
-**Running BGE with ONNX Runtime instead of PyTorch.** PyTorch and FAISS crashed when used in the same program on my Mac. I traced it to both libraries bringing their own copy of the same helper library (OpenMP), which conflict. I switched to ONNX Runtime, a lighter way to run the same Hugging Face model. I checked that it gives the same numbers as PyTorch before switching, and it cut the install size by about 500 MB.
+**Small models copy examples.** My first prompt showed the model an example citation like `[src/db.py:12-29]`, and it copied `src/` into its answers: 0 of 7 citations pointed to real files. Now the model only cites source numbers (`[1]`, `[2]`) and my code fills in the real file and lines. On 8 questions about the `requests` repo, that went from 10 valid / 5 broken citations to **20 valid / 0 broken**.
 
-**Letting the model cite numbers, not file paths.** Llama sees the retrieved chunks as numbered sources (`Source [1] bookstore/db.py:10-15`) and cites them as `[1]`, `[2]`. My code then swaps each number for the real file and lines, so the model never writes a path or line number itself. I got here in steps:
-- First I asked the model to copy labels, with the example `[src/db.py:12-29]`. It copied the `src/` folder into its answers, so 0 of 7 citations were real.
-- A placeholder example (`[folder/file.py:START-END]`) fixed that on the small sample project (9 of 9), but on the real `requests` repo the model copied `START-END` literally. That approach got 10 valid and 5 broken citations on 8 questions.
-- Numbered sources got 20 valid and 0 broken on the same 8 questions.
+**Don't trust the model's citations; check them.** A simple rule-based checker confirms each citation points to a chunk the model was actually given, and flags broken ones like `[7]` (when there were only 5 sources) or `[Retry:START-END]`.
 
-**Checking citations with simple rules instead of trusting the model.** After Llama answers, RepoGuide finds every `[file:start-end]` in the answer and checks that one of the retrieved chunks is from that file and covers those lines. If not, it prints a warning with the bad citation. It also flags malformed citations, like a source number that doesn't exist (`[7]` when there are 5 sources) or `[Retry:START-END]`. I tested it on real output: it flagged every made-up `src/` citation from my first prompt, and with numbered sources, 8 of 8 answers about `requests` passed. One limit: it checks that a citation points to code the model was shown, not that the sentence describing that code is correct.
+**Measure before guessing.** Indexing Flask took 2 minutes. I suspected wasted work from padding (each batch is padded to its longest chunk), but my first measurement said no. That measurement was wrong (it counted the padding), and once fixed it showed half the work was wasted. Sorting chunks by length made indexing **2x faster** (120s → 58s) with identical results.
 
-**Downloading GitHub repos safely.** RepoGuide runs `git clone --depth 1` (latest version only) into `data/repos/` and reuses the copy next time. The URL has to match a strict `github.com/owner/repo` pattern, `--` stops anything in it from being read as a git option, and git is told never to prompt for a password, so private or misspelled repos fail with a clear message. RepoGuide only reads the downloaded files; it never runs them.
+**Treat downloaded code as untrusted.** RepoGuide only reads downloaded repos, never runs them. GitHub links must match a strict pattern, and git is never allowed to prompt for a password. For a public version, folder paths are blocked so visitors can't read the server's own files.
 
-**Making indexing about 2x faster.** On real repos, indexing was slow (about 2 minutes for Flask). Each batch of 32 chunks gets padded to its longest chunk, so mixing short and long chunks wasted about half the work. Sorting chunks by length before embedding (and putting the results back in order) cut Flask from 120s to 58s with identical vectors. Repos over 3,000 chunks (about 2 minutes to index) get a clear message instead of a long wait.
+## Results So Far
 
-**Keeping the UI separate from the logic.** `app/ui.py` only draws the page. It calls the same functions as the command line tools, so the web page can't change how search or citation checks work, and those parts stay testable without a browser.
-
-**Keeping everything local.** Embeddings run on the CPU and Llama 3.2 runs through Ollama, so no code leaves the machine. The Streamlit server only accepts connections from the same computer, and usage stats are turned off (`.streamlit/config.toml`).
-
-## Status
-
-| Step | Status |
+| | |
 |---|---|
-| File discovery + function-aware chunking | Done |
-| BGE embeddings + FAISS search | Done |
-| Llama 3.2 answers with citations | Done |
-| Citation checking | Done |
-| Streamlit UI | Done |
-| Public GitHub repos | Done |
-| Measuring search quality | Next |
+| Citation accuracy on 8 questions about `psf/requests` | 20 of 20 citations valid, 8 of 8 answers passed the check |
+| Real repos tested | requests, flask, tqdm, httpx, micrograd, awesome (Markdown only) |
+| Indexing speed | ~25 chunks/second on a laptop CPU (micrograd: 3s, Flask: 58s) |
+| Answer time | about 2-11 seconds on an M-series MacBook |
+| Tests | 108 passing |
 
-## Setup
+These are small, hand-picked tests. A proper search-quality benchmark is next on the roadmap.
 
-Requires Python 3.11+ and [Ollama](https://ollama.com) for the LLM step.
+## Run It Yourself
+
+Requires Python 3.11+ and [Ollama](https://ollama.com).
 
 ```bash
+git clone https://github.com/VeluriAnurag/repoguide.git
+cd repoguide
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-ollama pull llama3.2    # ~2 GB, with the Ollama app running
+ollama pull llama3.2        # ~2 GB, with the Ollama app open
+
+python -m streamlit run app/ui.py
 ```
 
-See how a repo gets split into chunks:
+Then open http://localhost:8501, paste a GitHub link, and ask a question.
+
+It also works from the terminal:
 
 ```bash
-python -m app.chunker tests/fixtures/sample_repo
+python -m app.ask https://github.com/psf/requests "How does requests handle redirects?"
+python -m app.retriever tests/fixtures/sample_repo "where is the database connection set up?"   # search only, no LLM
+python -m app.chunker tests/fixtures/sample_repo                                              # see how code is split
 ```
 
-## Hosting It Online (Hugging Face Spaces)
+## Project Structure
 
-RepoGuide runs on my laptop. It's also ready to host on Hugging Face Spaces: the `Dockerfile` runs Ollama (Llama 3.2) and the Streamlit app together in one container. Docker Spaces require a Hugging Face PRO account ($9/month as of September 2026), so I haven't put it online yet.
-
-```bash
-hf auth login                                   # once, with a Hugging Face access token
-python scripts/deploy_space.py <hf-username>    # creates the Space "repoguide"
+```text
+app/
+  ingest.py       find files, skip folders like .git and node_modules
+  chunker.py      split code by function/class with line numbers
+  embeddings.py   BGE embeddings via ONNX Runtime
+  index.py        FAISS index that keeps metadata attached to each vector
+  retriever.py    build the index and search it
+  generator.py    prompt Llama 3.2 and turn [1] into file:lines citations
+  citations.py    find and check citations
+  github.py       safely download public GitHub repos
+  ask.py          command line Q&A
+  ui.py           Streamlit web app
+tests/            108 tests, plus a small sample project to test against
+scripts/          demo recording and optional Hugging Face deployment
 ```
-
-The hosted version runs with `REPOGUIDE_PUBLIC=1`, which changes a few things for safety:
-- Only GitHub links are accepted. Typing a folder path would let visitors read the server's own files.
-- Indexes are shared between visitors (the same repo is only indexed once), and only one repo is indexed at a time.
-- At most 10 downloaded repos are kept; the least recently used are deleted.
 
 ## Tests
 
 ```bash
-pytest                  # everything (first run downloads the BGE model, ~130 MB;
-                        # the LLM test is skipped if Ollama isn't running)
-pytest -m "not slow"    # quick tests only, no model download
+pytest                  # everything (downloads the BGE model on first run; skips the LLM test if Ollama is closed)
+pytest -m "not slow"    # quick tests only
 ```
 
-The tests use a small sample project in `tests/fixtures/sample_repo`. The most important one checks that every line of code ends up in exactly one chunk with the correct line numbers, since wrong line numbers would mean wrong citations.
+## Limitations
 
-## Known Issues
-
+- Best at "where is X / how does Y work" questions. The model only sees the 5 most relevant chunks, so big-picture questions about a whole repo are weaker.
+- The citation check confirms an answer points to real code the model was shown, not that every sentence about that code is correct. Llama 3.2 (3B) sometimes adds its own reasoning.
+- Repos over 3,000 chunks (large projects like Django) are too slow to index on a laptop CPU.
 - Test files sometimes rank above the code they test, because test names read like plain English.
-- Very short chunks (like a one-line `__init__.py`) occasionally show up in results.
-- About 11% of chunks in Flask are longer than the 512 tokens BGE can read, so their endings aren't used for search.
-- The citation check confirms an answer points to code the model was shown, not that every sentence about that code is correct. Llama 3.2 (3B) sometimes adds its own reasoning.
-- Repos with more than 3,000 chunks (large projects like Django) are too slow to index on a laptop CPU.
+
+## Roadmap
+
+- [x] Function-aware chunking with exact line numbers
+- [x] BGE embeddings + FAISS search
+- [x] Llama 3.2 answers with numbered-source citations
+- [x] Rule-based citation checking
+- [x] Streamlit chat UI with sources panel
+- [x] Public GitHub repos
+- [ ] Search-quality benchmark (does the right code show up in the top 5?)
+- [ ] Use the benchmark to fix test files outranking source code
+- [ ] Public hosted version (ready to deploy on Hugging Face Spaces with `scripts/deploy_space.py`; Docker Spaces need a paid PRO account)
+
+## Author
+
+**Anurag Veluri**, Computational Modeling and Data Analytics at Virginia Tech
+[LinkedIn](https://www.linkedin.com/in/anurag-veluri-bb7069308/) · [GitHub](https://github.com/VeluriAnurag)
